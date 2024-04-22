@@ -27,7 +27,7 @@
 
 set -euo pipefail
 
-readonly version="1.0.0"
+readonly version="1.1.0"
 
 function debug() {
 	if [[ "${debug}" == "true" ]]; then
@@ -71,7 +71,11 @@ function start_ssh_agent() {
 			debug "adding the key ${key}"
 			chmod 0400 "${key}" >/dev/null 2>&1
 			set +e
-			ssh-add "${key}" </dev/null >/dev/null 2>&1
+			if [[ "${confirm_mode}" == "true" ]]; then
+				ssh-add -c "${key}" </dev/null >/dev/null 2>&1
+			else
+				ssh-add "${key}" </dev/null >/dev/null 2>&1
+			fi
 			set -e
 		fi
 	done
@@ -106,17 +110,19 @@ function export_env() {
 
 function help() {
 	cat <<-EOD >&2
-	USAGE: ssh-agents [-h|--help] [-d|--debug] [-n|--name] [-v|--version]
+		USAGE: ssh-agents [-h|--help] [-d|--debug] [-n|--name] [-c|--confirm] [-v|--version]
 
-	Start or load an already existing SSH agent. The default name is global and
-	the agent state will be saved at ${HOME}/.ssh/agent and all the keys directly
-	under ${HOME}/.ssh will be added automatically, provided they are not
-	encrypted!
+		Start or load an already existing SSH agent. The default name is global and
+		the agent state will be saved at ${HOME}/.ssh/agent and all the keys directly
+		under ${HOME}/.ssh will be added automatically, provided they are not
+		encrypted!
 
-	Changing the SSH agent name with the flag -n or --name, would put the agent
-	under ${HOME}/.ssh/${SSH_AGENT_NAME}/agent and all the keys directly under
-	${HOME}/.ssh/${SSH_AGENT_NAME} will be added automatically, provided they are
-	not encrypted!
+		Changing the SSH agent name with the flag -n or --name, would put the agent
+		under ${HOME}/.ssh/${SSH_AGENT_NAME}/agent and all the keys directly under
+		${HOME}/.ssh/${SSH_AGENT_NAME} will be added automatically, provided they are
+		not encrypted!
+
+		Specify -c or --confirm if you want to confirm SSH keys usage.
 	EOD
 }
 
@@ -125,30 +131,35 @@ agent_name=global
 
 while [[ $# -ge 1 ]]; do
 	case "${1}" in
-		-h|--help)
-			help
-			exit 0
-			;;
-		-v|--version)
-			echo "ssh-agents v${version}"
-			exit 0
-			;;
-		-d|--debug)
-			debug=true
-			shift
-			;;
-		-n|--name)
-			shift
-			if [[ "${#}" -eq 0 ]]; then
-				>&2 echo "ERR: --name requires an argument"
-				exit 1
-			fi
-			agent_name="${1}"
-			shift
-			;;
-		*)
-			echo "${1} is given but is not supported"
+	-h | --help)
+		help
+		exit 0
+		;;
+	-v | --version)
+		echo "ssh-agents v${version}"
+		exit 0
+		;;
+	-d | --debug)
+		debug=true
+		shift
+		;;
+	-n | --name)
+		shift
+		if [[ "${#}" -eq 0 ]]; then
+			>&2 echo "ERR: --name requires an argument"
 			exit 1
+		fi
+		agent_name="${1}"
+		shift
+		;;
+	-c | --confirm)
+		confirm_mode=true
+		shift
+		;;
+	*)
+		echo "${1} is given but is not supported"
+		exit 1
+		;;
 	esac
 done
 
