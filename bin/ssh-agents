@@ -35,50 +35,85 @@ function debug() {
 	fi
 }
 
-# start the SSH agent
-function start_ssh_agent() {
-	# No. Try to get the environment variables from the file.
-	if [[ -f "${SSH_AGENT_FILE}" ]] ; then
-		debug "${SSH_AGENT_FILE} does exist, trying to load the agent from it"
-		eval "$( grep -v echo "${SSH_AGENT_FILE}" )"
-	fi
-
+function check_agent_status() {
 	# Exit status of ssh-add
 	#   0 means the agent exists and has keys,
 	#   1 means the agent exists but has no keys, and
 	#   2 means agent does not exist.
 	set +e
-	ssh-add -l > /dev/null 2>&1
+	ssh-add -l >/dev/null 2>&1
 	agent_status=$?
 	set -e
 	debug "agent_status=${agent_status}"
+	return ${agent_status}
+}
 
-	# Does our environment point to an agent now?
-	if [[ "${agent_status}" -eq 2 ]]; then
+# start the SSH agent
+function start_ssh_agent() {
+	# No. Try to get the environment variables from the file.
+	if [[ -f "${SSH_AGENT_FILE}" ]]; then
+		debug "${SSH_AGENT_FILE} does exist, trying to load the agent from it"
+		eval "$(grep -v echo "${SSH_AGENT_FILE}")"
+	fi
+
+	agent_status=$(check_agent_status)
+
+	if [[ "${agent_status}" -eq 0 ]]; then
+		# nothing to do.. our agents has keys already
+		exit 0
+	elif [[ "${agent_status}" -eq 2 ]]; then
 		# No.  Start an ssh-agent, saving the environment variables.
-		if ! ssh-agent -s > "${SSH_AGENT_FILE}"; then
+		if ! ssh-agent -s >"${SSH_AGENT_FILE}"; then
 			echo "Failed to start the ssh-agent." >&2
 			exit 1
 		fi
-		eval "$( grep -v echo "${SSH_AGENT_FILE}" )"
+		eval "$(grep -v echo "${SSH_AGENT_FILE}")"
 	fi
 
+	if [[ "${add_ssh_keys}" == "true" ]]; then
+		add_keys_from_src ~/.ssh
+	fi
+
+	if [[ "${ssh_keys_source}" != "" ]]; then
+		add_key "${ssh_keys_source}"
+	fi
+}
+
+# add keys from file or dir
+function add_keys_from_src() {
 	# Add all of the keys
-	local key=
-	for key in $(find "$(dirname "${SSH_AGENT_FILE}")" -mindepth 1 -maxdepth 1); do
+	local key_src="${1}"
+	local key=""
+	local find_cmd=""
+	if [[ -d "${key_src}" ]]; then
+		find_cmd="find ${key_src} -mindepth 1 -maxdepth 1"
+	else
+		find_cmd="find "$(dirname "${key_src}")" -mindepth 1 -maxdepth 1"
+	fi
+	for key in $(${find_cmd}); do
 		debug "found a file located at ${key}"
-		if grep -q 'PRIVATE KEY' "${key}" >/dev/null >&2; then
-			debug "adding the key ${key}"
-			chmod 0400 "${key}" >/dev/null 2>&1
-			set +e
-			if [[ "${confirm_mode}" == "true" ]]; then
-				ssh-add -c "${key}" </dev/null >/dev/null 2>&1
-			else
-				ssh-add "${key}" </dev/null >/dev/null 2>&1
-			fi
-			set -e
-		fi
+
+		add_key "${key}"
 	done
+}
+
+# export the variables to the environment
+function add_key() {
+	# Add all of the keys
+	local key="${1}"
+	if grep -q 'PRIVATE KEY' "${key}" >/dev/null >&2; then
+		debug "adding the key ${key}"
+
+		set +e
+		if [[ "${confirm_mode}" == "true" ]]; then
+			ssh-add -c "${key}" </dev/null >/dev/null 2>&1
+		else
+			ssh-add "${key}" </dev/null >/dev/null 2>&1
+		fi
+		set -e
+	else
+		debug "file ${key} doesn't seem to be a PRIVATE KEY"
+	fi
 }
 
 # export the variables to the environment
@@ -87,21 +122,21 @@ function export_env() {
 	# assumes everyone else can understand sh syntax (bash, ksh, zsh
 	# and maybe others).  Other folks can add detection for more
 	# esoteric shells as needed.
-	if [ "${SHELL##*/}" = "tcsh" ] ; then
-		for var in $* ; do
-			if [ -n "${!var}" ] ; then
+	if [ "${SHELL##*/}" = "tcsh" ]; then
+		for var in $*; do
+			if [ -n "${!var}" ]; then
 				echo "setenv $var ${!var};"
 			fi
 		done
-	elif [ "${SHELL##*/}" = "fish" ] ; then
-		for var in $* ; do
-			if [ -n "${!var}" ] ; then
+	elif [ "${SHELL##*/}" = "fish" ]; then
+		for var in $*; do
+			if [ -n "${!var}" ]; then
 				echo "set -Ux $var ${!var};"
 			fi
 		done
 	else
-		for var in $* ; do
-			if [ -n "${!var}" ] ; then
+		for var in $*; do
+			if [ -n "${!var}" ]; then
 				echo "$var=${!var}; export $var;"
 			fi
 		done
@@ -110,7 +145,16 @@ function export_env() {
 
 function help() {
 	cat <<-EOD >&2
-		USAGE: ssh-agents [-h|--help] [-d|--debug] [-n|--name] [-c|--confirm] [-v|--version]
+		USAGE: ssh-agents
+			[-h|--help]          : print this help message
+			[-v|--version]       : print version and exit
+			[-d|--debug]         : enable debugging logs
+			[-n|--name]          : set the name for ssh-agents
+			[-c|--confirm]       : enable confirmation for SSH keys
+			[-A|--add-ssh-keys]  : add all keys in ~/.ssh
+			[-a|--add] <KEY|DIR> : add keys. Can be used in two ways:
+				KEY: specify one key to add
+				DIR: add all keys in a directory
 
 		Start or load an already existing SSH agent. The default name is global and
 		the agent state will be saved at ${HOME}/.ssh/agent and all the keys directly
@@ -128,6 +172,7 @@ function help() {
 
 debug=false
 agent_name=global
+confirm_mode=false
 
 while [[ $# -ge 1 ]]; do
 	case "${1}" in
@@ -150,6 +195,18 @@ while [[ $# -ge 1 ]]; do
 			exit 1
 		fi
 		agent_name="${1}"
+		shift
+		;;
+	-A | --add-ssh-keys)
+		add_ssh_keys=true
+		shift
+		;;
+	-a | --add)
+		if [[ "${#}" -eq 0 ]]; then
+			>&2 echo "ERR: --add requires an argument, pointing to an SSH key or dir"
+			exit 1
+		fi
+		ssh_keys_source="${1}"
 		shift
 		;;
 	-c | --confirm)
@@ -175,7 +232,7 @@ if [[ "${SSH_AGENT_NAME}" == "global" ]]; then
 else
 	readonly SSH_AGENT_FILE="${HOME}/.ssh/${SSH_AGENT_NAME}/agent"
 fi
-if [[ ! -w "$( dirname "${SSH_AGENT_FILE}" )" ]]; then
+if [[ ! -w "$(dirname "${SSH_AGENT_FILE}")" ]]; then
 	# do not spawn an agent if we cannot write to the base directory of the
 	# ssh agent file.
 	exit
