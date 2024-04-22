@@ -31,7 +31,7 @@ readonly version="1.1.0"
 
 function debug() {
 	if [[ "${debug}" == "true" ]]; then
-		echo "${@}"
+		echo "# ${@}"
 	fi
 }
 
@@ -44,8 +44,7 @@ function check_agent_status() {
 	ssh-add -l >/dev/null 2>&1
 	agent_status=$?
 	set -e
-	debug "agent_status=${agent_status}"
-	return ${agent_status}
+	echo ${agent_status}
 }
 
 # start the SSH agent
@@ -56,18 +55,22 @@ function start_ssh_agent() {
 		eval "$(grep -v echo "${SSH_AGENT_FILE}")"
 	fi
 
-	agent_status=$(check_agent_status)
+	local agent_status=$(check_agent_status)
+	debug "agent_status=${agent_status}"
 
-	if [[ "${agent_status}" -eq 0 ]]; then
-		# nothing to do.. our agents has keys already
-		exit 0
-	elif [[ "${agent_status}" -eq 2 ]]; then
+	if [[ "${agent_status}" -eq 2 ]]; then
 		# No.  Start an ssh-agent, saving the environment variables.
 		if ! ssh-agent -s >"${SSH_AGENT_FILE}"; then
-			echo "Failed to start the ssh-agent." >&2
+			echo "# Failed to start the ssh-agent." >&2
 			exit 1
 		fi
-		eval "$(grep -v echo "${SSH_AGENT_FILE}")"
+	fi
+
+	eval "$(grep -v echo "${SSH_AGENT_FILE}")"
+
+	if [[ "${agent_status}" -eq 0 ]]; then
+		# nothing to do.. our agents exists and has keys already
+		return
 	fi
 
 	if [[ "${add_ssh_keys}" == "true" ]]; then
@@ -172,7 +175,9 @@ function help() {
 
 debug=false
 agent_name=global
-confirm_mode=false
+confirm_mode=""
+add_ssh_keys=""
+ssh_keys_source=""
 
 while [[ $# -ge 1 ]]; do
 	case "${1}" in
@@ -214,7 +219,7 @@ while [[ $# -ge 1 ]]; do
 		shift
 		;;
 	*)
-		echo "${1} is given but is not supported"
+		echo "${1} parameter was given but is not supported"
 		exit 1
 		;;
 	esac
