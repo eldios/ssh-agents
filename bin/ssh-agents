@@ -55,7 +55,8 @@ function start_ssh_agent() {
 		eval "$(grep -v echo "${SSH_AGENT_FILE}")"
 	fi
 
-	local agent_status=$(check_agent_status)
+	local agent_status
+	agent_status=$(check_agent_status)
 	debug "agent_status=${agent_status}"
 
 	if [[ "${agent_status}" -eq 2 ]]; then
@@ -91,7 +92,7 @@ function add_keys_from_src() {
 	if [[ -d "${key_src}" ]]; then
 		find_cmd="find ${key_src} -mindepth 1 -maxdepth 1"
 	else
-		find_cmd="find "$(dirname "${key_src}")" -mindepth 1 -maxdepth 1"
+		find_cmd='find '"$(dirname ${key_src})"' -mindepth 1 -maxdepth 1'
 	fi
 	for key in $(${find_cmd}); do
 		debug "found a file located at ${key}"
@@ -126,19 +127,19 @@ function export_env() {
 	# and maybe others).  Other folks can add detection for more
 	# esoteric shells as needed.
 	if [ "${SHELL##*/}" = "tcsh" ]; then
-		for var in $*; do
+		for var in "$@"; do
 			if [ -n "${!var}" ]; then
 				echo "setenv $var ${!var};"
 			fi
 		done
 	elif [ "${SHELL##*/}" = "fish" ]; then
-		for var in $*; do
+		for var in "$@"; do
 			if [ -n "${!var}" ]; then
 				echo "set -Ux $var ${!var};"
 			fi
 		done
 	else
-		for var in $*; do
+		for var in "$@"; do
 			if [ -n "${!var}" ]; then
 				echo "$var=${!var}; export $var;"
 			fi
@@ -237,7 +238,7 @@ if [[ "${SSH_AGENT_NAME}" == "global" ]]; then
 else
 	readonly SSH_AGENT_FILE="${HOME}/.ssh/${SSH_AGENT_NAME}/agent"
 fi
-if [[ ! -w "$(dirname "${SSH_AGENT_FILE}")" ]]; then
+if [[ ! -w "$(dirname ${SSH_AGENT_FILE})" ]]; then
 	# do not spawn an agent if we cannot write to the base directory of the
 	# ssh agent file.
 	exit
