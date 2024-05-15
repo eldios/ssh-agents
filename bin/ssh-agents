@@ -170,31 +170,43 @@ function export_env() {
 }
 
 function help() {
-	cat <<-EOD >&2
-		USAGE: ssh-agents
-			[-h|--help]          : print this help message
-			[-v|--version]       : print version and exit
-			[-d|--debug]         : enable debugging logs
-			[-i|--init]          : set this execution as init (usually in .bashrc / .zshrc)
-			[-n|--name]          : set the name for ssh-agents
-			[-c|--confirm]       : enable confirmation for SSH keys
-			[-A|--add-ssh-keys]  : add all keys in ~/.ssh
-			[-a|--add] <KEY|DIR> : add keys. Can be used in two ways:
-				KEY: specify one key to add
-				DIR: add all keys in a directory
+	cat <<EOD >&2
+USAGE: ssh-agents
+	[-h|--help]          : print this help message
+	[-v|--version]       : print version and exit
+	[-d|--debug]         : enable debugging logs
+	[-i|--init]          : set this execution as init (usually in .bashrc / .zshrc)
+	[-n|--name]          : set the name for ssh-agents
+	[-c|--confirm]       : enable confirmation for SSH keys
+	[-A|--add-ssh-keys]  : add all keys in ~/.ssh
+	[-a|--add] <KEY|DIR> : add keys. Can be used in two ways:
+		KEY: specify one key to add
+		DIR: add all keys in a directory
 
-		Start or load an already existing SSH agent. The default name is global and
-		the agent state will be saved at ${HOME}/.ssh/agent and all the keys directly
-		under ${HOME}/.ssh will be added automatically, provided they are not
-		encrypted!
+Start or attahes to an already existing SSH agent. The default name is 'global'
+and the agent state will be saved at ${HOME}/.ssh/agent and all the keys
+directly under ${HOME}/.ssh will be added automatically, provided they are
+not encrypted... in which case it will ask for a password.
 
-		Changing the SSH agent name with the flag -n or --name, would put the agent
-		under ${HOME}/.ssh/${SSH_AGENT_NAME}/agent and all the keys directly under
-		${HOME}/.ssh/${SSH_AGENT_NAME} will be added automatically, provided they are
-		not encrypted!
+Changing the SSH agent name with the flag -n or --name, would put the agent
+under ${HOME}/.ssh/${SSH_AGENT_NAME}/agent and all the keys directly under
+${HOME}/.ssh/${SSH_AGENT_NAME} will be added automatically, provided they are
+not encrypted... in which case it will ask for a password.
 
-		Specify -c or --confirm if you want to confirm SSH keys usage.
-	EOD
+WARNING[1]: Specify -c or --confirm if you want to confirm SSH keys
+  usage when requested via SSH AGENT (STRONGLY ADVISED).
+
+WARNING[2]: Right now only SSH keys in RFC42216 format are accepted,
+  but that's the default OpenSSH format so that's probably okay.
+
+NOTE: you should add a line to your .basrc / .zshrc, to activate \`ssh-agents\`.
+
+  if you want to automatically add one key, just add:
+    eval \$(~/bin/ssh-agents -i -c -a ~/.ssh/id_ed25519)
+
+  if you want to add all keys contained in '~/.ssh/':
+    eval \$(~/bin/ssh-agents -i -c -A)
+EOD
 }
 
 debug=false
