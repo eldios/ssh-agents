@@ -208,6 +208,7 @@ while [[ $# -ge 1 ]]; do
 		shift
 		;;
 	-a | --add)
+		shift
 		if [[ "${#}" -eq 0 ]]; then
 			>&2 echo "ERR: --add requires an argument, pointing to an SSH key or dir"
 			exit 1
