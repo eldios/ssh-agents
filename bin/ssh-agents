@@ -31,7 +31,7 @@ readonly version="1.1.0"
 
 function debug() {
 	if [[ "${debug}" == "true" ]]; then
-		echo "# ${@}"
+		echo "# ${*}"
 	fi
 }
 
@@ -69,16 +69,18 @@ function start_ssh_agent() {
 
 	eval "$(grep -v echo "${SSH_AGENT_FILE}")"
 
-	if [[ "${agent_status}" -eq 0 ]]; then
-		# nothing to do.. our agents exists and has keys already
+	if [[ "${is_init}" == "true" && "${agent_status}" -eq 0 ]]; then
+		debug "Nothing to do.. our agents exists and has keys already"
 		return
 	fi
 
 	if [[ "${add_ssh_keys}" == "true" ]]; then
+		debug "Adding all keys found in ~/.ssh"
 		add_keys_from_src ~/.ssh
 	fi
 
 	if [[ "${ssh_keys_source}" != "" ]]; then
+		debug "Adding key(s) found in ${ssh_keys_source}"
 		add_key "${ssh_keys_source}"
 	fi
 }
@@ -103,18 +105,38 @@ function add_keys_from_src() {
 
 # export the variables to the environment
 function add_key() {
-	# Add all of the keys
 	local key="${1}"
+	debug "checking if ${key} is an actual key"
 	if grep -q 'PRIVATE KEY' "${key}" >/dev/null >&2; then
-		debug "adding the key ${key}"
+		debug "confirmed ${key} seems to be an actual key"
 
+		debug "checking if keyfile ${key} has been already added successfully to the agent"
+		_fingerprint_new_key="$(ssh-keygen -f ${key} -l | awk '{print $2}')"
+		_skip_key="false"
 		set +e
-		if [[ "${confirm_mode}" == "true" ]]; then
-			ssh-add -c "${key}" </dev/null >/dev/null 2>&1
-		else
-			ssh-add "${key}" </dev/null >/dev/null 2>&1
-		fi
+		ssh-add -l >/dev/null 2>&1
+		_agent_code="$?"
 		set -e
+		if [[ "${_agent_code}" == "0" ]]; then
+			_keys_in_agent="$(ssh-add -l | awk '{print $2}')"
+			if echo "${_keys_in_agent}" | grep -q "${_fingerprint_new_key}" >/dev/null >&2; then
+				debug "key is already present in ssh-agent, skipping"
+				_skip_key="true"
+			fi
+		fi
+
+		if [[ "${_skip_key}" == "false" ]]; then
+			debug "adding the key ${key}"
+			set +e
+			if [[ "${confirm_mode}" == "true" ]]; then
+				ssh-add -c "${key}" </dev/null >/dev/null 2>&1
+			else
+				ssh-add "${key}" </dev/null >/dev/null 2>&1
+			fi
+			set -e
+		else
+			debug "${key} key skipped"
+		fi
 	else
 		debug "file ${key} doesn't seem to be a PRIVATE KEY"
 	fi
@@ -153,6 +175,7 @@ function help() {
 			[-h|--help]          : print this help message
 			[-v|--version]       : print version and exit
 			[-d|--debug]         : enable debugging logs
+			[-i|--init]          : set this execution as init (usually in .bashrc / .zshrc)
 			[-n|--name]          : set the name for ssh-agents
 			[-c|--confirm]       : enable confirmation for SSH keys
 			[-A|--add-ssh-keys]  : add all keys in ~/.ssh
@@ -176,6 +199,7 @@ function help() {
 
 debug=false
 agent_name=global
+is_init=false
 confirm_mode=""
 add_ssh_keys=""
 ssh_keys_source=""
@@ -192,6 +216,10 @@ while [[ $# -ge 1 ]]; do
 		;;
 	-d | --debug)
 		debug=true
+		shift
+		;;
+	-i | --init)
+		is_init=true
 		shift
 		;;
 	-n | --name)
